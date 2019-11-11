@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <stdio.h>
-
-#include "hmalloc.h"
-
+#include "hmalloc.h" 
 typedef struct list_node {
    size_t size;
    struct list_node* next;
@@ -113,16 +111,12 @@ free_list_insert(list_node* new)
             curr = curr->next;
         }
     }
-
-
-    //print_flist();
 }
 
 static
 void
 add_page()
 {
-    //print_flist();
     // maps a new page
     void* mem_addr = mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 
@@ -151,9 +145,7 @@ get_free_chunk(size_t size)
     list_node* prev_node = 0;
     list_node* behind_best = 0;
 
-    // shouldn't be anything over 4096 on the free list
     // so this is a good flag value
-    size_t min_size = 5000;
     list_node* best_chunk = 0;
 
 /*
@@ -174,9 +166,9 @@ get_free_chunk(size_t size)
     {
         if(curr_node->size >= size)
         {
-            min_size = curr_node->size;
             best_chunk = curr_node;
             behind_best = prev_node;
+            break;
         }
 
         prev_node = curr_node;
@@ -197,21 +189,24 @@ get_free_chunk(size_t size)
         behind_best->next = best_chunk->next;
     }
     else {
-        free_list = 0;
+        free_list = best_chunk->next;
     }
 
-    best_chunk->size = size;
-
+    // BUG
+    //
+    long excess_amt = best_chunk->size - size;
 
     // return excess to free list, if there's enough space
-    if (min_size - size > sizeof(list_node*) + sizeof(size_t))
+    if (excess_amt > sizeof(list_node*) + sizeof(size_t))
     {
+        best_chunk->size = size;
         void* next_free_addr = (void*)best_chunk + size;
         list_node* excess = (list_node*)next_free_addr;
-        excess->size = min_size - size;
+        excess->size = excess_amt;
         excess->next = 0;
         free_list_insert(excess);
     }
+
 
     return best_chunk;
 }
@@ -289,9 +284,9 @@ hmalloc(size_t size)
 
     // get the actual size we need
     size += sizeof(size_t);
-    if (size < (sizeof(list_node) + sizeof(size_t)))
+    if (size < (sizeof(list_node*) + sizeof(size_t)))
     {
-        size = (sizeof(list_node) + sizeof(size_t));
+        size = (sizeof(list_node*) + sizeof(size_t));
     }
     // we will only deal with this 'true' size from here on
 
@@ -336,9 +331,5 @@ hfree(void* item)
     }
 
     // coalesce it all
-    printf("before coalescing\n");
-    print_flist();
     coalesce();
-    printf("after coalescing\n");
-    print_flist();
 }
