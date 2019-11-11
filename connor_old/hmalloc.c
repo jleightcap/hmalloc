@@ -28,6 +28,24 @@ free_list_length()
 }
 
 static
+int
+is_sorted()
+{
+    for (list_node* curr = free_list; curr; curr = curr->next)
+    {
+        if (!curr->next)
+        {
+            return 1;
+        }
+        if (curr > curr->next)
+        {
+            return 0;
+        } 
+    }
+    return 1;
+}
+
+static
 void
 print_flist()
 {
@@ -45,7 +63,6 @@ coalesce()
     list_node* curr = free_list;
     while(curr)
     {
-        printf("%p\n", curr);
         if((void*)curr + curr->size == (void*)curr->next)
         {
             curr->size = curr->size + curr->next->size;
@@ -56,6 +73,12 @@ coalesce()
         {
             curr = curr->next;
         }
+    }
+    if (!is_sorted())
+    {
+        print_flist();
+        printf("Not sorted.\n");
+        exit(1);
     }
 }
 
@@ -74,36 +97,10 @@ free_list_insert(list_node* new)
     }
     else if (new < curr) {
         // insert the new item at the head
-        puts("inserting at head");
-        printf("new: %p, new size %#010x, curr %p\n", new, (uint)new->size, curr);
         new->next = curr;
         free_list = new;
     }
     else {
-        /*// find the right place for new
-        while(curr && curr->next && (new < curr->next))
-        {
-            curr = curr->next;
-        }
-
-        if(curr->next) {
-            // there's ... idek
-            // attach new to the right of curr->next
-            new->next = curr->next->next;
-            curr->next->next = new;
-        }
-        else {
-            // at the end of the list, curr is the last real element
-            // attach new to the right of curr
-            new->next = 0;
-            curr->next = new;
-        }
-        /*
-        // link up the pointers
-        new->next = curr->next;
-        curr->next = new;
-        */
-
         while(1) {
             // either the next doesn't exist or the new fits between
             // the current and the next of the current
@@ -115,8 +112,6 @@ free_list_insert(list_node* new)
             // increment
             curr = curr->next;
         }
-
-
     }
 
 
@@ -127,6 +122,7 @@ static
 void
 add_page()
 {
+    //print_flist();
     // maps a new page
     void* mem_addr = mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 
@@ -160,10 +156,23 @@ get_free_chunk(size_t size)
     size_t min_size = 5000;
     list_node* best_chunk = 0;
 
-
+/*
     while(curr_node)
     {
         if(curr_node->size >= size && curr_node->size < min_size)
+        {
+            min_size = curr_node->size;
+            best_chunk = curr_node;
+            behind_best = prev_node;
+        }
+
+        prev_node = curr_node;
+        curr_node = curr_node->next;
+    }
+    */
+    while(curr_node)
+    {
+        if(curr_node->size >= size)
         {
             min_size = curr_node->size;
             best_chunk = curr_node;
@@ -249,7 +258,6 @@ void*
 hmalloc_large(size_t size)
 {
     // here, the size is the true size we need.
-    puts("large thing mallocd");
 
     int num_pages = div_up(size, PAGE_SIZE);
 
@@ -288,7 +296,7 @@ hmalloc(size_t size)
     // we will only deal with this 'true' size from here on
 
     // handle mapping for large chunks
-    if (size >= PAGE_SIZE)
+    if (size > PAGE_SIZE)
     {
         //mmap the entire page.
         return hmalloc_large(size);
@@ -310,7 +318,7 @@ hfree(void* item)
     chunk->next = 0;
 
     //if larger than a page
-    if (chunk->size >= PAGE_SIZE)
+    if (chunk->size > PAGE_SIZE)
     {
         int pages = div_up(chunk->size, PAGE_SIZE);
         //unmap the page divided up
@@ -328,6 +336,9 @@ hfree(void* item)
     }
 
     // coalesce it all
+    printf("before coalescing\n");
+    print_flist();
     coalesce();
+    printf("after coalescing\n");
     print_flist();
 }
