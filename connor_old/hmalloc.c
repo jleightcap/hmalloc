@@ -29,29 +29,34 @@ free_list_length()
 
 static
 void
+print_flist()
+{
+    printf("==================== This is a newline ========================\n");
+    printf("size of freelist: %ld\n", free_list_length());
+    for (list_node* curr = free_list; curr; curr = curr->next) {
+        printf("Size %ld, address %p, end address %p, next %p\n", curr->size, curr, (void*)curr + curr->size, curr->next);
+    }
+}
+
+static
+void
 coalesce()
 {
     list_node* curr = free_list;
     while(curr)
     {
+        printf("%p\n", curr);
         if((void*)curr + curr->size == (void*)curr->next)
         {
             curr->size = curr->size + curr->next->size;
             curr->next = curr->next->next;
-            coalesce();
-            return;
+            //coalesce();
         }
-        if(curr->next && ((void*)curr - curr->next->size == (void*)curr->next))
+        else
         {
-            curr->size = curr->size + curr->next->size;
-            curr->next = curr->next->next;
-            coalesce();
-            return;
+            curr = curr->next;
         }
-
-        curr = curr->next;
     }
-
 }
 
 static
@@ -62,29 +67,60 @@ free_list_insert(list_node* new)
     // to next initialized
     list_node* curr = free_list;
 
-    while(curr && curr->next && (curr->next < new))
-    {
-        curr = curr->next;
-    }
-
-    // when we're here, curr is the node before
-    // where the new one belongs, its next should
-    // go after the new one
-
-    // link up the pointers
-    if(curr)
-    {
-        new->next = curr->next;
-        curr->next = new;
-    }
-    else
-    {
+    if (!curr) {
+        // there's no free list, new is the free list now
         new->next = 0;
         free_list = new;
     }
+    else if (new < curr) {
+        // insert the new item at the head
+        puts("inserting at head");
+        printf("new: %p, new size %#010x, curr %p\n", new, (uint)new->size, curr);
+        new->next = curr;
+        free_list = new;
+    }
+    else {
+        /*// find the right place for new
+        while(curr && curr->next && (new < curr->next))
+        {
+            curr = curr->next;
+        }
 
-    // coalesce it all
-    coalesce();
+        if(curr->next) {
+            // there's ... idek
+            // attach new to the right of curr->next
+            new->next = curr->next->next;
+            curr->next->next = new;
+        }
+        else {
+            // at the end of the list, curr is the last real element
+            // attach new to the right of curr
+            new->next = 0;
+            curr->next = new;
+        }
+        /*
+        // link up the pointers
+        new->next = curr->next;
+        curr->next = new;
+        */
+
+        while(1) {
+            // either the next doesn't exist or the new fits between
+            // the current and the next of the current
+            if(!curr->next || (new > curr && new < curr->next)) {
+                new->next = curr->next;
+                curr->next = new;
+                return;
+            }
+            // increment
+            curr = curr->next;
+        }
+
+
+    }
+
+
+    //print_flist();
 }
 
 static
@@ -213,6 +249,7 @@ void*
 hmalloc_large(size_t size)
 {
     // here, the size is the true size we need.
+    puts("large thing mallocd");
 
     int num_pages = div_up(size, PAGE_SIZE);
 
@@ -251,7 +288,7 @@ hmalloc(size_t size)
     // we will only deal with this 'true' size from here on
 
     // handle mapping for large chunks
-    if (size > PAGE_SIZE)
+    if (size >= PAGE_SIZE)
     {
         //mmap the entire page.
         return hmalloc_large(size);
@@ -273,7 +310,7 @@ hfree(void* item)
     chunk->next = 0;
 
     //if larger than a page
-    if (chunk->size > PAGE_SIZE)
+    if (chunk->size >= PAGE_SIZE)
     {
         int pages = div_up(chunk->size, PAGE_SIZE);
         //unmap the page divided up
@@ -284,8 +321,13 @@ hfree(void* item)
         }
 
         stats.pages_unmapped += pages;
-        return;
+    }
+    else
+    {
+        free_list_insert(chunk);
     }
 
-    free_list_insert(chunk);
+    // coalesce it all
+    coalesce();
+    print_flist();
 }
