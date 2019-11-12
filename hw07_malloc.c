@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "xmalloc.h"
-//#include "hmalloc.h"
+#include "hmem.h"
 
 /* CH02 TODO:
  *  - This should call / use your alloctor from the previous HW,
@@ -14,20 +14,18 @@
 void*
 xmalloc(size_t bytes)
 {
-    //return hmalloc(bytes);
-    return 0;
+    return hmalloc(bytes);
 }
 
 void
 xfree(void* ptr)
 {
-    //hfree(ptr);
+    hfree(ptr);
 }
 
 void*
 xrealloc(void* prev, size_t bytes)
 {
-    //return hrealloc(prev, bytes);
-    return 0;
+    return hrealloc(prev, bytes);
 }
 
