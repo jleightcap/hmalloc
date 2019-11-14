@@ -16,7 +16,8 @@ typedef struct list_node {
    struct list_node* next;
 } list_node;
 
-const size_t PAGE_SIZE = 4096;
+//const size_t PAGE_SIZE = 4096;
+const size_t PAGE_SIZE = 65536; // NOT A PAGE!
 static hm_stats stats; // This initializes the stats to 0.
 static __thread list_node* free_list = 0;
 
