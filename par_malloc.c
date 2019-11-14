@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h>
+#include <math.h>
 
 
 #include "xmalloc.h"
@@ -19,222 +20,26 @@ typedef struct list_node {
 //const size_t PAGE_SIZE = 4096;
 const size_t PAGE_SIZE = 65536; // NOT A PAGE!
 static hm_stats stats; // This initializes the stats to 0.
-static __thread list_node* free_list = 0;
+
+static __thread list_node* heads[11] = {0}; // buckets
+
+/*
+bucket documentation:
+the smallest bucket is 64 bytes; 48 usable
+this keeps increasing in powers of two up to
+index 10: 2^16 - 8 = ?
+
+how to get size from index:
+true size: 2^(6 + ii)
+user size: true_size - sizeof(list_node);
+
+this is because 2^6 == 64, which we've chosen as the smallest
+bucket.
+
+*/
 
 // mutex
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-long
-free_list_length()
-{
-    int len = 0;
-
-    list_node* curr = free_list;
-    while(curr)
-    {
-        len++;
-        curr = curr->next;
-    }
-
-    return len;
-}
-
-static
-int
-is_sorted()
-{
-
-    for (list_node* curr = free_list; curr; curr = curr->next)
-    {
-        if (!curr->next)
-        {
-            return 1;
-        }
-        if (curr > curr->next)
-        {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-static
-void
-print_flist()
-{
-    printf("==================== This is a newline ========================\n");
-    printf("size of freelist: %ld\n", free_list_length());
-    for (list_node* curr = free_list; curr; curr = curr->next) {
-        printf("Size %ld, address %p, end address %p, next %p\n", curr->size, curr, (void*)curr + curr->size, curr->next);
-    }
-}
-
-static
-void
-coalesce()
-{
-  /*
-    list_node* curr = free_list;
-    while(curr)
-    {
-        if((void*)curr + curr->size == (void*)curr->next)
-        {
-            curr->size = curr->size + curr->next->size;
-            curr->next = curr->next->next;
-        }
-        else
-        {
-            curr = curr->next;
-        }
-    }*/
-
-  // a husk of what it once was...
-}
-
-static
-void
-free_list_insert(list_node* new)
-{
-    // we assume the new node has the correct size but no pointer
-    // to next initialized
-    list_node* curr = free_list;
-
-    if (!curr) {
-        // there's no free list, new is the free list now
-        new->next = 0;
-        free_list = new;
-    }
-    else if (new < curr) {
-        // insert the new item at the head
-        new->next = curr;
-        free_list = new;
-    }
-    else {
-        while(1) {
-            // either the next doesn't exist or the new fits between
-            // the current and the next of the current
-            if(!curr->next || (new > curr && new < curr->next)) {
-                new->next = curr->next;
-                curr->next = new; // undefined behaviour?
-                return;
-            }
-
-            // coalesce and increment
-            if((void*)curr + curr->size == (void*)curr->next)
-            {
-                curr->size = curr->size + curr->next->size;
-                curr->next = curr->next->next;
-            }
-            else
-            {
-                curr = curr->next;
-            }
-        }
-    }
-}
-
-static
-void
-add_page()
-{
-    // maps a new page
-    void* mem_addr = mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-
-    if((long)mem_addr == -1)
-    {
-        perror("mapping new page");
-    }
-
-    // call the new page a node
-    list_node* new_chunk = (list_node*)mem_addr;
-    // set its size
-    new_chunk->size = PAGE_SIZE;
-    new_chunk->next = 0;
-    // let the insert function set its pointer
-    free_list_insert(new_chunk);
-
-    stats.pages_mapped += 1;
-}
-
-// use best fit to return pointer to user
-static
-list_node*
-get_free_chunk(size_t size)
-{
-    list_node* curr_node = free_list;
-    list_node* prev_node = 0;
-    list_node* behind_best = 0;
-
-    // so this is a good flag value
-    list_node* best_chunk = 0;
-
-    while(curr_node)
-    {
-        if(curr_node->size >= size)
-        {
-            best_chunk = curr_node;
-            behind_best = prev_node;
-            break;
-        }
-
-        prev_node = curr_node;
-        curr_node = curr_node->next;
-    }
-
-    // if we didn't find one large enough, add another page to the free_list
-    // and try again to get a free chunk
-    if (!best_chunk) // if null pointer
-    {
-        add_page();
-        return get_free_chunk(size);
-    }
-
-    // remove the chunk from the free list
-    // before we return it to the user
-    if (behind_best) {
-        behind_best->next = best_chunk->next;
-    }
-    else {
-        free_list = best_chunk->next;
-    }
-
-    long excess_amt = best_chunk->size - size;
-
-    // TODO don't call free_list_insert here, instead
-    // just mess with pointers (but do it right)
-
-    // return excess to free list, if there's enough space
-    if (excess_amt > sizeof(list_node*) + sizeof(size_t))
-    {
-        best_chunk->size = size;
-
-        void* next_free_addr = (void*)best_chunk + size;
-        list_node* excess = (list_node*)next_free_addr;
-        excess->size = excess_amt;
-        excess->next = 0;
-        free_list_insert(excess);
-    }
-
-    return best_chunk;
-}
-
-hm_stats*
-hgetstats() {
-    stats.free_length = free_list_length();
-    return &stats;
-}
-
-void
-hprintstats()
-{
-    stats.free_length = free_list_length();
-    fprintf(stderr, "\n== husky malloc stats ==\n");
-    fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
-    fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
-    fprintf(stderr, "Allocs:   %ld\n", stats.chunks_allocated);
-    fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
-    fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
-}
 
 static
 size_t
@@ -252,6 +57,53 @@ div_up(size_t xx, size_t yy)
     }
 }
 
+static
+int
+conv_size_bucket(size_t size)
+{
+    // find the index to be used
+    int bucket = log(size)/log(2) - 6;
+    if (bucket < 0)
+    {
+        bucket = 0;
+    }
+    return ceil(bucket);
+}
+
+static
+int
+conv_bucket_size(int bucket)
+{
+    return 1 << (bucket + 6);
+}
+
+// fills the given bucket with chunks of the right size
+static
+void
+fill_bucket(int bucket)
+{
+    size_t bucket_true_space = conv_bucket_size(bucket);
+
+    void* new_space = mmap(NULL,
+        PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,
+        MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+
+    if((long)new_space == -1)
+    {
+        perror("filling bucket");
+    }
+
+    for (int offset = 0; offset < PAGE_SIZE; )
+    {
+        list_node* new_node = (list_node*)(new_space + offset);
+        new_node->size = bucket_true_space;
+        // TODO: be careful around this
+        offset += bucket_true_space; // don't have to calculate it twice this way
+        new_node->next = (list_node*)(new_space + offset);
+    }
+
+    heads[bucket] = (list_node*)new_space;
+}
 
 static
 void*
@@ -262,7 +114,10 @@ hmalloc_large(size_t size)
     int num_pages = div_up(size, PAGE_SIZE);
 
     // mmap enough pages for the big thing
-    void* new_addr = mmap(NULL, num_pages * PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+    void* new_addr = mmap(NULL,
+        num_pages * PAGE_SIZE,
+        PROT_READ|PROT_WRITE|PROT_EXEC,
+        MAP_SHARED|MAP_ANONYMOUS,-1, 0);
 
     if((long)new_addr == -1)
     {
@@ -274,37 +129,38 @@ hmalloc_large(size_t size)
     new_chunk->size = num_pages * PAGE_SIZE;
     new_chunk->next = 0;
 
-    stats.pages_mapped += num_pages;
 
     return new_addr + sizeof(size_t);
 }
 
 
 void*
-xmalloc(size_t size)
+xmalloc(size_t bytes)
 {
+    size_t true_bytes = bytes + sizeof(size_t);
     //pthread_mutex_lock(&lock);
-    stats.chunks_allocated += 1;
-
-    size_t og_size = size;
-
-    // get the actual size we need
-    size += sizeof(size_t);
-    if (size < (sizeof(list_node*) + sizeof(size_t)))
-    {
-        size = (sizeof(list_node*) + sizeof(size_t));
-    }
-    // we will only deal with this 'true' size from here on
 
     // handle mapping for large chunks
-    if (size > PAGE_SIZE)
+    if (bytes > PAGE_SIZE)
     {
         //mmap the entire page.
         //pthread_mutex_unlock(&lock);
-        return hmalloc_large(size);
+        return hmalloc_large(true_bytes);
     }
 
-    void* mem_addr = get_free_chunk(size);
+    int bucket = conv_size_bucket(true_bytes);
+
+    //void* mem_addr = get_free_chunk(size);
+
+    if(!heads[bucket])
+    {
+        fill_bucket(bucket);
+    }
+
+    void* mem_addr = heads[bucket];
+    heads[bucket] = heads[bucket]->next;
+
+    ((list_node*)mem_addr)->size = conv_bucket_size(bucket);
 
     //pthread_mutex_unlock(&lock);
     return mem_addr + sizeof(size_t);
@@ -315,12 +171,7 @@ xfree(void* item)
 {
     //pthread_mutex_lock(&lock);
 
-    stats.chunks_freed += 1;
-
     list_node* chunk = (list_node*)(item - sizeof(size_t));
-
-    // initialize the next pointer
-    chunk->next = 0;
 
     //if larger than a page
     if (chunk->size > PAGE_SIZE)
@@ -332,15 +183,14 @@ xfree(void* item)
         {
             perror("unmapping large page");
         }
-
-        stats.pages_unmapped += pages;
     }
     else
     {
-        free_list_insert(chunk);
+        //free_list_insert(chunk);
+        int bucket = conv_size_bucket(chunk->size);
+        chunk->next = heads[bucket];
+        heads[bucket] = chunk;
     }
-
-    //coalesce();
 
     //pthread_mutex_unlock(&lock);
 }
@@ -348,26 +198,26 @@ xfree(void* item)
 void*
 xrealloc(void* prev, size_t bytes)
 {
-    list_node* prev_node = (list_node*)(prev - sizeof(size_t));
-    size_t prev_size = prev_node->size;
+    list_node* chunk = (list_node*)(prev - sizeof(size_t));
     size_t true_bytes = bytes + sizeof(size_t);
 
-    if (!prev)
+    if (!chunk)
     {
         return xmalloc(bytes);
     }
     else if (bytes == 0)
     {
-        xfree(prev);
+        xfree(chunk);
         return 0;
     }
-    else if (true_bytes == prev_size)
+    else if (true_bytes == chunk->size)
     {
         // do nothing
-        return prev;
+        return chunk;
     }
-    else if (true_bytes < prev_size)
+    else if (true_bytes < chunk->size)
     {
+        /*
         // return the difference to the freelist
         size_t excess_amt = prev_size - true_bytes;
         void* excess_addr = (void*)prev + true_bytes;
@@ -375,17 +225,21 @@ xrealloc(void* prev, size_t bytes)
         excess->size = excess_amt;
         excess->next = 0;
         free_list_insert(excess);
+        */
 
+        // the unreliable xmalloc strikes again
+        // you can't trust what it says
+        // OooOOOOOOOOooooo
 
         // return old pointer
-        return prev;
+        return chunk;
     }
     else
     {
         // we need more space than we have
         void* new_mem = xmalloc(bytes);
-        memcpy(new_mem, prev, (prev_size - sizeof(size_t)));
-        xfree(prev);
+        memcpy(new_mem, chunk, (chunk->size - sizeof(size_t)));
+        xfree(chunk);
         return new_mem;
     }
 }

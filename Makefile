@@ -8,7 +8,7 @@ SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
 
 CFLAGS := -g
-LDLIBS := -lpthread
+LDLIBS := -lpthread -lm
 
 all: $(BINS)
 
