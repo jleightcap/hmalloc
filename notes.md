@@ -21,3 +21,7 @@
     return new pointer
 
 
+# get_free_chunk
+
+the excess could be quickly inserted if we didn't call free_list_insert and
+instead updated the pointers inside get_free_chunk

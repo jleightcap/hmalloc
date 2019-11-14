@@ -76,6 +76,7 @@ static
 void
 coalesce()
 {
+  /*
     list_node* curr = free_list;
     while(curr)
     {
@@ -88,7 +89,9 @@ coalesce()
         {
             curr = curr->next;
         }
-    }
+    }*/
+
+  // a husk of what it once was...
 }
 
 static
@@ -115,11 +118,20 @@ free_list_insert(list_node* new)
             // the current and the next of the current
             if(!curr->next || (new > curr && new < curr->next)) {
                 new->next = curr->next;
-                curr->next = new;
+                curr->next = new; // undefined behaviour?
                 return;
             }
-            // increment
-            curr = curr->next;
+
+            // coalesce and increment
+            if((void*)curr + curr->size == (void*)curr->next)
+            {
+                curr->size = curr->size + curr->next->size;
+                curr->next = curr->next->next;
+            }
+            else
+            {
+                curr = curr->next;
+            }
         }
     }
 }
@@ -190,6 +202,9 @@ get_free_chunk(size_t size)
     }
 
     long excess_amt = best_chunk->size - size;
+
+    // TODO don't call free_list_insert here, instead
+    // just mess with pointers (but do it right)
 
     // return excess to free list, if there's enough space
     if (excess_amt > sizeof(list_node*) + sizeof(size_t))
@@ -327,6 +342,8 @@ xfree(void* item)
     {
         free_list_insert(chunk);
     }
+
+    //coalesce();
 
     pthread_mutex_unlock(&lock);
 }
