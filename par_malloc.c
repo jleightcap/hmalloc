@@ -18,7 +18,7 @@ typedef struct list_node {
 
 const size_t PAGE_SIZE = 4096;
 static hm_stats stats; // This initializes the stats to 0.
-static list_node* free_list = 0;
+static __thread list_node* free_list = 0;
 
 // mutex
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -28,16 +28,12 @@ free_list_length()
 {
     int len = 0;
 
-    // lock before read
-
     list_node* curr = free_list;
     while(curr)
     {
         len++;
         curr = curr->next;
     }
-
-    // unlock after read
 
     return len;
 }
@@ -286,7 +282,7 @@ hmalloc_large(size_t size)
 void*
 xmalloc(size_t size)
 {
-    pthread_mutex_lock(&lock);
+    //pthread_mutex_lock(&lock);
     stats.chunks_allocated += 1;
 
     size_t og_size = size;
@@ -303,20 +299,20 @@ xmalloc(size_t size)
     if (size > PAGE_SIZE)
     {
         //mmap the entire page.
-        pthread_mutex_unlock(&lock);
+        //pthread_mutex_unlock(&lock);
         return hmalloc_large(size);
     }
 
     void* mem_addr = get_free_chunk(size);
 
-    pthread_mutex_unlock(&lock);
+    //pthread_mutex_unlock(&lock);
     return mem_addr + sizeof(size_t);
 }
 
 void
 xfree(void* item)
 {
-    pthread_mutex_lock(&lock);
+    //pthread_mutex_lock(&lock);
 
     stats.chunks_freed += 1;
 
@@ -345,7 +341,7 @@ xfree(void* item)
 
     //coalesce();
 
-    pthread_mutex_unlock(&lock);
+    //pthread_mutex_unlock(&lock);
 }
 
 void*
