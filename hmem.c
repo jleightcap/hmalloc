@@ -27,7 +27,6 @@ free_list_length()
     int len = 0;
 
     // lock before read
-    pthread_mutex_lock(&lock);
 
     list_node* curr = free_list;
     while(curr)
@@ -37,31 +36,25 @@ free_list_length()
     }
 
     // unlock after read
-    pthread_mutex_unlock(&lock);
 
-    return len;
-}
+    return len; }
 
 static
 int
 is_sorted()
 {
-    pthread_mutex_lock(&lock);
 
     for (list_node* curr = free_list; curr; curr = curr->next)
     {
         if (!curr->next)
         {
-            pthread_mutex_unlock(&lock);
             return 1;
         }
         if (curr > curr->next)
         {
-            pthread_mutex_unlock(&lock);
             return 0;
         }
     }
-    pthread_mutex_unlock(&lock);
     return 1;
 }
 
@@ -69,24 +62,17 @@ static
 void
 print_flist()
 {
-    pthread_mutex_lock(&lock);
-
     printf("==================== This is a newline ========================\n");
     printf("size of freelist: %ld\n", free_list_length());
     for (list_node* curr = free_list; curr; curr = curr->next) {
         printf("Size %ld, address %p, end address %p, next %p\n", curr->size, curr, (void*)curr + curr->size, curr->next);
     }
-
-    pthread_mutex_unlock(&lock);
 }
 
 static
 void
 coalesce()
 {
-    pthread_mutex_lock(&lock);
-
-
     list_node* curr = free_list;
     while(curr)
     {
@@ -101,7 +87,6 @@ coalesce()
             curr = curr->next;
         }
     }
-    pthread_mutex_unlock(&lock);
 
 /*
     if (!is_sorted())
@@ -118,9 +103,6 @@ static
 void
 free_list_insert(list_node* new)
 {
-    pthread_mutex_lock(&lock);
-
-
     // we assume the new node has the correct size but no pointer
     // to next initialized
     list_node* curr = free_list;
@@ -148,8 +130,6 @@ free_list_insert(list_node* new)
             curr = curr->next;
         }
     }
-
-    pthread_mutex_unlock(&lock);
 }
 
 static
@@ -179,9 +159,6 @@ static
 list_node*
 get_free_chunk(size_t size)
 {
-
-    pthread_mutex_lock(&lock);
-
     list_node* curr_node = free_list;
     list_node* prev_node = 0;
     list_node* behind_best = 0;
@@ -216,7 +193,6 @@ get_free_chunk(size_t size)
         curr_node = curr_node->next;
     }
 
-    pthread_mutex_unlock(&lock);
     // if we didn't find one large enough, add another page to the free_list
     // and try again to get a free chunk
     if (!best_chunk) // if null pointer
@@ -225,7 +201,6 @@ get_free_chunk(size_t size)
         return get_free_chunk(size);
     }
 
-    pthread_mutex_lock(&lock);
     // remove the chunk from the free list
     // before we return it to the user
     if (behind_best) {
@@ -234,7 +209,6 @@ get_free_chunk(size_t size)
     else {
         free_list = best_chunk->next;
     }
-    pthread_mutex_unlock(&lock);
 
     // BUG
     //
@@ -243,9 +217,7 @@ get_free_chunk(size_t size)
     // return excess to free list, if there's enough space
     if (excess_amt > sizeof(list_node*) + sizeof(size_t))
     {
-        pthread_mutex_lock(&lock);
         best_chunk->size = size;
-        pthread_mutex_unlock(&lock);
 
         void* next_free_addr = (void*)best_chunk + size;
         list_node* excess = (list_node*)next_free_addr;
@@ -325,6 +297,8 @@ hmalloc_large(size_t size)
 void*
 hmalloc(size_t size)
 {
+    pthread_mutex_lock(&lock);
+    printf("mallocing\n");
     stats.chunks_allocated += 1;
 
     size_t og_size = size;
@@ -341,17 +315,21 @@ hmalloc(size_t size)
     if (size > PAGE_SIZE)
     {
         //mmap the entire page.
+        pthread_mutex_unlock(&lock);
         return hmalloc_large(size);
     }
 
     void* mem_addr = get_free_chunk(size);
 
+    pthread_mutex_unlock(&lock);
     return mem_addr + sizeof(size_t);
 }
 
 void
 hfree(void* item)
 {
+    pthread_mutex_lock(&lock);
+
     stats.chunks_freed += 1;
 
     list_node* chunk = (list_node*)(item - sizeof(size_t));
@@ -379,6 +357,8 @@ hfree(void* item)
 
     // coalesce it all
     coalesce();
+
+    pthread_mutex_unlock(&lock);
 }
 
 void*
