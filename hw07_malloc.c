@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "xmalloc.h"
 #include "hmem.h"
 
 /* CH02 TODO:
@@ -28,4 +27,3 @@ xrealloc(void* prev, size_t bytes)
 {
     return hrealloc(prev, bytes);
 }
-

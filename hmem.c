@@ -43,7 +43,6 @@ static
 int
 is_sorted()
 {
-
     for (list_node* curr = free_list; curr; curr = curr->next)
     {
         if (!curr->next)
@@ -162,11 +161,12 @@ get_free_chunk(size_t size)
     list_node* curr_node = free_list;
     list_node* prev_node = 0;
     list_node* behind_best = 0;
+    size_t min_size = 5000;
 
     // so this is a good flag value
     list_node* best_chunk = 0;
 
-/*
+
     while(curr_node)
     {
         if(curr_node->size >= size && curr_node->size < min_size)
@@ -174,19 +174,6 @@ get_free_chunk(size_t size)
             min_size = curr_node->size;
             best_chunk = curr_node;
             behind_best = prev_node;
-        }
-
-        prev_node = curr_node;
-        curr_node = curr_node->next;
-    }
-*/
-    while(curr_node)
-    {
-        if(curr_node->size >= size)
-        {
-            best_chunk = curr_node;
-            behind_best = prev_node;
-            break;
         }
 
         prev_node = curr_node;
@@ -225,7 +212,6 @@ get_free_chunk(size_t size)
         excess->next = 0;
         free_list_insert(excess);
     }
-
 
     return best_chunk;
 }
@@ -298,7 +284,6 @@ void*
 hmalloc(size_t size)
 {
     pthread_mutex_lock(&lock);
-    printf("mallocing\n");
     stats.chunks_allocated += 1;
 
     size_t og_size = size;
