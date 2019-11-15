@@ -17,7 +17,7 @@ typedef struct list_node {
    struct list_node* next;
 } list_node;
 
-//const size_t PAGE_SIZE = 4096;
+// const size_t PAGE_SIZE = 4096;
 const size_t PAGE_SIZE = 65536; // NOT A PAGE!
 static hm_stats stats; // This initializes the stats to 0.
 
@@ -62,12 +62,12 @@ int
 conv_size_bucket(size_t size)
 {
     // find the index to be used
-    int bucket = log(size)/log(2) - 6;
+    int bucket = ceil(log(size)/log(2)) - 6;
     if (bucket < 0)
     {
         bucket = 0;
     }
-    return ceil(bucket);
+    return bucket;
 }
 
 static
@@ -75,6 +75,27 @@ int
 conv_bucket_size(int bucket)
 {
     return 1 << (bucket + 6);
+}
+
+static
+void
+print_bucket(int ii)
+{
+    for (list_node* curr = heads[ii]; curr && curr->next; curr = curr->next) {
+      printf("{%p}\n", curr);
+    }
+    printf("\n");
+}
+
+static
+void
+print_heads()
+{
+    for (int ii = 0; ii < 11; ++ii) {
+      printf("head %p\n", heads[ii]);
+      // print_bucket(ii);
+    }
+    printf("\n");
 }
 
 // fills the given bucket with chunks of the right size
@@ -87,21 +108,26 @@ fill_bucket(int bucket)
     void* new_space = mmap(NULL,
         PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,
         MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-
     if((long)new_space == -1)
     {
         perror("filling bucket");
     }
 
-    for (int offset = 0; offset < PAGE_SIZE; )
+    int num_chunks = PAGE_SIZE / bucket_true_space;
+    for (int ii = 0; ii < num_chunks; ii++)
     {
-        list_node* new_node = (list_node*)(new_space + offset);
+        list_node* new_node = (list_node*)(new_space + ii * bucket_true_space);
         new_node->size = bucket_true_space;
         // TODO: be careful around this
-        offset += bucket_true_space; // don't have to calculate it twice this way
-        new_node->next = (list_node*)(new_space + offset);
+        if (ii == num_chunks - 1) // last new_node has null pointer
+        {
+            new_node->next = 0;
+        }
+        else
+        {
+            new_node->next = (list_node*)(new_space + (ii + 1) * bucket_true_space);
+        }
     }
-
     heads[bucket] = (list_node*)new_space;
 }
 
@@ -150,14 +176,19 @@ xmalloc(size_t bytes)
 
     int bucket = conv_size_bucket(true_bytes);
 
-    //void* mem_addr = get_free_chunk(size);
-
     if(!heads[bucket])
     {
         fill_bucket(bucket);
     }
 
-    void* mem_addr = heads[bucket];
+    /*
+    printf("size requested %d, bucket chosen %d\n", bytes, bucket);
+
+    printf("heads[bucket] = %p\n", heads[bucket]);
+    printf("heads[bucket]->next = %p\n", heads[bucket]->next);
+    */
+
+    void* mem_addr = (void*)heads[bucket];
     heads[bucket] = heads[bucket]->next;
 
     ((list_node*)mem_addr)->size = conv_bucket_size(bucket);
@@ -200,7 +231,7 @@ xrealloc(void* prev, size_t bytes)
 {
     list_node* chunk = (list_node*)(prev - sizeof(size_t));
     size_t true_bytes = bytes + sizeof(size_t);
-
+    
     if (!chunk)
     {
         return xmalloc(bytes);
@@ -239,7 +270,7 @@ xrealloc(void* prev, size_t bytes)
         // we need more space than we have
         void* new_mem = xmalloc(bytes);
         memcpy(new_mem, chunk, (chunk->size - sizeof(size_t)));
-        xfree(chunk);
+        // xfree(chunk);
         return new_mem;
     }
 }
