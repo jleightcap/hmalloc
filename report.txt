@@ -1,3 +1,15 @@
+LOCAL:
+OS: Arch Linux x86_64
+Processor: Intel i7-8550U
+Cores: 8
+RAM: 15.7GB
+
+    | IVEC | LIST
+----+------+-------
+SYS | 0.01 |  0.02
+PAR | 0.00 |  0.01
+HW7 | 0.94 | 22.82
+
 First, we did a pass through all functions which iterate through the entire list.
 For some, there can be 'double duty', like coalescing while inserting. Just this
 optimization alone cut our time by 40% or so. We started looking for more places
