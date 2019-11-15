@@ -1,5 +1,5 @@
 #!/bin/bash
-val=1000
+val=2000
 
 bins=(./collatz-ivec-hw7 ./collatz-ivec-par ./collatz-ivec-sys ./collatz-list-hw7 ./collatz-list-par ./collatz-list-sys)
 rm -f data.dat
