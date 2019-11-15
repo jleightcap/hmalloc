@@ -10,15 +10,14 @@
 
 
 #include "xmalloc.h"
-//#include "hmem.h"
 
 typedef struct list_node {
    size_t size;
    struct list_node* next;
 } list_node;
 
-// const size_t PAGE_SIZE = 4096;
-const size_t PAGE_SIZE = 65536; // NOT A PAGE!
+//const size_t PAGE_SIZE = 4096;
+const size_t PAGE_SIZE = 65536; // more than a page
 static hm_stats stats; // This initializes the stats to 0.
 
 static __thread list_node* heads[11] = {0}; // buckets
@@ -37,9 +36,6 @@ this is because 2^6 == 64, which we've chosen as the smallest
 bucket.
 
 */
-
-// mutex
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 static
 size_t
@@ -118,10 +114,10 @@ fill_bucket(int bucket)
     {
         list_node* new_node = (list_node*)(new_space + ii * bucket_true_space);
         new_node->size = bucket_true_space;
-        // TODO: be careful around this
-        if (ii == num_chunks - 1) // last new_node has null pointer
+        if (ii == num_chunks - 1)
         {
-            new_node->next = 0;
+             // last new_node has null pointer
+             new_node->next = 0;
         }
         else
         {
@@ -164,13 +160,11 @@ void*
 xmalloc(size_t bytes)
 {
     size_t true_bytes = bytes + sizeof(size_t);
-    //pthread_mutex_lock(&lock);
 
     // handle mapping for large chunks
     if (bytes > PAGE_SIZE)
     {
         //mmap the entire page.
-        //pthread_mutex_unlock(&lock);
         return hmalloc_large(true_bytes);
     }
 
@@ -181,27 +175,17 @@ xmalloc(size_t bytes)
         fill_bucket(bucket);
     }
 
-    /*
-    printf("size requested %d, bucket chosen %d\n", bytes, bucket);
-
-    printf("heads[bucket] = %p\n", heads[bucket]);
-    printf("heads[bucket]->next = %p\n", heads[bucket]->next);
-    */
-
     void* mem_addr = (void*)heads[bucket];
     heads[bucket] = heads[bucket]->next;
 
     ((list_node*)mem_addr)->size = conv_bucket_size(bucket);
 
-    //pthread_mutex_unlock(&lock);
     return mem_addr + sizeof(size_t);
 }
 
 void
 xfree(void* item)
 {
-    //pthread_mutex_lock(&lock);
-
     list_node* chunk = (list_node*)(item - sizeof(size_t));
 
     //if larger than a page
@@ -217,13 +201,11 @@ xfree(void* item)
     }
     else
     {
-        //free_list_insert(chunk);
         int bucket = conv_size_bucket(chunk->size);
         chunk->next = heads[bucket];
         heads[bucket] = chunk;
     }
 
-    //pthread_mutex_unlock(&lock);
 }
 
 void*
@@ -261,6 +243,8 @@ xrealloc(void* prev, size_t bytes)
         // the unreliable xmalloc strikes again
         // you can't trust what it says
         // OooOOOOOOOOooooo
+
+        // (this is for speed)
 
         // return old pointer
         return prev;
