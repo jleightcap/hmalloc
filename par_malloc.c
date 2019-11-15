@@ -231,20 +231,20 @@ xrealloc(void* prev, size_t bytes)
 {
     list_node* chunk = (list_node*)(prev - sizeof(size_t));
     size_t true_bytes = bytes + sizeof(size_t);
-    
+
     if (!chunk)
     {
         return xmalloc(bytes);
     }
     else if (bytes == 0)
     {
-        xfree(chunk);
+        xfree(prev);
         return 0;
     }
     else if (true_bytes == chunk->size)
     {
         // do nothing
-        return chunk;
+        return prev;
     }
     else if (true_bytes < chunk->size)
     {
@@ -263,14 +263,14 @@ xrealloc(void* prev, size_t bytes)
         // OooOOOOOOOOooooo
 
         // return old pointer
-        return chunk;
+        return prev;
     }
     else
     {
         // we need more space than we have
         void* new_mem = xmalloc(bytes);
-        memcpy(new_mem, chunk, (chunk->size - sizeof(size_t)));
-        // xfree(chunk);
+        memcpy(new_mem, prev, (chunk->size - sizeof(size_t)));
+        xfree(prev);
         return new_mem;
     }
 }
