@@ -16,3 +16,5 @@ RAM: 15.7GB
 |SYS | 0.01 |  0.02 |
 |PAR | 0.00 |  0.01 |
 |HW7 | 0.94 | 22.82 |
+
+Written by Connor Northway and Jack Leightcap
