@@ -1,3 +1,16 @@
+# hmalloc
+A bucket-based memory allocator designed to be faster than the system malloc()\*.
+
+\*(*sometimes*)
+
+# Results
+
+LOCAL:
+OS: Arch Linux x86_64
+Processor: Intel i7-8550U
+Cores: 8
+RAM: 15.7GB
+
 |    | IVEC | LIST  |
 |:--:|:----:|:-----:|
 |SYS | 0.01 |  0.02 |
